@@ -1,8 +1,0 @@
-google/shamu-msm/include/generated/autoconf.h
-google/shamu-msm/.config.old
-google/msm/scripts/basic/.fixdep.cmd
-google/msm/scripts/kconfig/conf.o
-google/msm/scripts/kconfig/.conf.cmd
-google/msm/scripts/kconfig/.zconf.tab.o.cmd
-google/msm/scripts/kconfig/zconf.tab.o
-google/msm/scripts/kconfig/.conf.o.cmd
