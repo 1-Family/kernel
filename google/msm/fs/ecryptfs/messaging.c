@@ -36,6 +36,7 @@ static int ecryptfs_hash_bits;
         hash_long((unsigned long)uid, ecryptfs_hash_bits)
 
 static u32 ecryptfs_msg_counter;
+static struct ecryptfs_daemon * master_daemon = NULL;
 static struct ecryptfs_msg_ctx *ecryptfs_msg_ctx_arr;
 
 /**
@@ -118,18 +119,24 @@ void ecryptfs_msg_ctx_alloc_to_free(struct ecryptfs_msg_ctx *msg_ctx)
 int ecryptfs_find_daemon_by_euid(struct ecryptfs_daemon **daemon, uid_t euid,
 				 struct user_namespace *user_ns)
 {
-	struct hlist_node *elem;
-	int rc;
-
-	hlist_for_each_entry(*daemon, elem,
-			     &ecryptfs_daemon_hash[ecryptfs_uid_hash(euid)],
-			     euid_chain) {
-		if ((*daemon)->euid == euid && (*daemon)->user_ns == user_ns) {
-			rc = 0;
-			goto out;
-		}
+	int rc = 0;
+	*daemon = master_daemon;
+	if (*daemon == NULL) {
+		rc = -EINVAL;
 	}
-	rc = -EINVAL;
+	goto out;
+//	struct hlist_node *elem;
+//	int rc;
+//
+//	hlist_for_each_entry(*daemon, elem,
+//			     &ecryptfs_daemon_hash[ecryptfs_uid_hash(euid)],
+//			     euid_chain) {
+//		if ((*daemon)->euid == euid && (*daemon)->user_ns == user_ns) {
+//			rc = 0;
+//			goto out;
+//		}
+//	}
+//	rc = -EINVAL;
 out:
 	return rc;
 }
@@ -151,7 +158,13 @@ ecryptfs_spawn_daemon(struct ecryptfs_daemon **daemon, uid_t euid,
 		      struct user_namespace *user_ns, struct pid *pid)
 {
 	int rc = 0;
-
+	//Allow only one execution
+	if(master_daemon != NULL) {
+		rc = -EACCES;
+		printk(KERN_ERR "Daemon is already running by euid %d", (*daemon)->euid);
+		goto out;
+	}
+	printk(KERN_DEBUG "The daemon's uid is going to be %d", euid);
 	(*daemon) = kzalloc(sizeof(**daemon), GFP_KERNEL);
 	if (!(*daemon)) {
 		rc = -ENOMEM;
@@ -159,6 +172,7 @@ ecryptfs_spawn_daemon(struct ecryptfs_daemon **daemon, uid_t euid,
 		       "GFP_KERNEL memory\n", __func__, sizeof(**daemon));
 		goto out;
 	}
+	master_daemon = *daemon;
 	(*daemon)->euid = euid;
 	(*daemon)->user_ns = get_user_ns(user_ns);
 	(*daemon)->pid = get_pid(pid);
@@ -211,6 +225,7 @@ int ecryptfs_exorcise_daemon(struct ecryptfs_daemon *daemon)
 		put_user_ns(daemon->user_ns);
 	mutex_unlock(&daemon->mux);
 	kzfree(daemon);
+	master_daemon = NULL;
 out:
 	return rc;
 }
@@ -316,20 +331,20 @@ int ecryptfs_process_response(struct ecryptfs_message *msg, uid_t euid,
 		       ctx_euid, pid);
 		goto wake_up;
 	}
-	if (ctx_euid != euid) {
-		rc = -EBADMSG;
-		printk(KERN_WARNING "%s: Received message from user "
-		       "[%d]; expected message from user [%d]\n", __func__,
-		       euid, ctx_euid);
-		goto unlock;
-	}
-	if (tsk_user_ns != user_ns) {
-		rc = -EBADMSG;
-		printk(KERN_WARNING "%s: Received message from user_ns "
-		       "[0x%p]; expected message from user_ns [0x%p]\n",
-		       __func__, user_ns, tsk_user_ns);
-		goto unlock;
-	}
+//	if (ctx_euid != euid) {
+//		rc = -EBADMSG;
+//		printk(KERN_WARNING "%s: Received message from user "
+//		       "[%d]; expected message from user [%d]\n", __func__,
+//		       euid, ctx_euid);
+//		goto unlock;
+//	}
+//	if (tsk_user_ns != user_ns) {
+//		rc = -EBADMSG;
+//		printk(KERN_WARNING "%s: Received message from user_ns "
+//		       "[0x%p]; expected message from user_ns [0x%p]\n",
+//		       __func__, user_ns, tsk_user_ns);
+//		goto unlock;
+//	}
 	if (daemon->pid != pid) {
 		rc = -EBADMSG;
 		printk(KERN_ERR "%s: User [%d] sent a message response "

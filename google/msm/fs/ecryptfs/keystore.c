@@ -84,6 +84,26 @@ static int process_find_global_auth_tok_for_sig_err(int err_code)
 }
 
 /**
+ *
+ * Returns the pid of the zygote spawned process
+ *
+ */
+static pid_t get_suitable_pid(void)
+{
+	pid_t rv = current->tgid;
+	struct task_struct * temp_current = current;
+	while (temp_current->tgid != 0 && strcmp(temp_current->comm, "main") && 
+			 strcmp(temp_current->real_parent->comm, "init")) {
+		rv = temp_current->tgid;
+		temp_current = temp_current->real_parent;
+	}
+	if (temp_current->tgid == 0) {
+		rv = 0;
+	}
+	return rv;
+}
+
+/**
  * ecryptfs_parse_packet_length
  * @data: Pointer to memory containing length at offset
  * @size: This function writes the decoded size to this memory
@@ -162,17 +182,27 @@ write_tag_64_packet(char *signature, struct ecryptfs_session_key *session_key,
 	size_t data_len;
 	size_t packet_size_len;
 	char *message;
+	char euid_str[ECRYPTFS_MAX_UID_SIZE] =  {0};
+	char pid_str[ECRYPTFS_MAX_PID_SIZE] =  {0};
 	int rc;
+	pid_t pid = get_suitable_pid();
 
+	if (pid == 0) {
+		ecryptfs_printk(KERN_ERR, "Failed to get suitable pid\n");
+		rc = -EIO;
+		goto out;
+	}
 	/*
 	 *              ***** TAG 64 Packet Format *****
 	 *    | Content Type                       | 1 byte       |
+	 *    | User initiating the request        | 7  		  |
+	 *    | Pid initiating the request         | 6  		  |
 	 *    | Key Identifier Size                | 1 or 2 bytes |
 	 *    | Key Identifier                     | arbitrary    |
 	 *    | Encrypted File Encryption Key Size | 1 or 2 bytes |
 	 *    | Encrypted File Encryption Key      | arbitrary    |
 	 */
-	data_len = (5 + ECRYPTFS_SIG_SIZE_HEX
+	 data_len = (5 + ECRYPTFS_MAX_PID_SIZE + ECRYPTFS_MAX_UID_SIZE + ECRYPTFS_SIG_SIZE_HEX
 		    + session_key->encrypted_key_size);
 	*packet = kmalloc(data_len, GFP_KERNEL);
 	message = *packet;
@@ -182,6 +212,31 @@ write_tag_64_packet(char *signature, struct ecryptfs_session_key *session_key,
 		goto out;
 	}
 	message[i++] = ECRYPTFS_TAG_64_PACKET_TYPE;
+
+	rc = ecryptfs_write_packet_length(&message[i], ECRYPTFS_MAX_UID_SIZE,
+						  &packet_size_len);
+	if (rc) {
+		ecryptfs_printk(KERN_ERR, "Error generating tag 64 packet "
+				"header; cannot generate packet length\n");
+		goto out;
+	}
+	i += packet_size_len;
+	snprintf(euid_str, ECRYPTFS_MAX_UID_SIZE, "%d", current_euid());
+	memcpy(&message[i], euid_str, ECRYPTFS_MAX_UID_SIZE);
+	i += ECRYPTFS_MAX_UID_SIZE;
+
+	rc = ecryptfs_write_packet_length(&message[i], ECRYPTFS_MAX_PID_SIZE,
+							  &packet_size_len);
+	if (rc) {
+		ecryptfs_printk(KERN_ERR, "Error generating tag 64 packet "
+				"header; cannot generate packet length\n");
+		goto out;
+	}
+	i += packet_size_len;
+	snprintf(pid_str, ECRYPTFS_MAX_PID_SIZE, "%d", pid);
+	memcpy(&message[i], pid_str, ECRYPTFS_MAX_PID_SIZE);
+	i += ECRYPTFS_MAX_PID_SIZE;
+
 	rc = ecryptfs_write_packet_length(&message[i], ECRYPTFS_SIG_SIZE_HEX,
 					  &packet_size_len);
 	if (rc) {
@@ -306,17 +361,28 @@ write_tag_66_packet(char *signature, u8 cipher_code,
 	size_t checksum = 0;
 	size_t packet_size_len;
 	char *message;
+	char euid_str[ECRYPTFS_MAX_UID_SIZE] =  {0};
+	char pid_str[ECRYPTFS_MAX_PID_SIZE] =  {0};
 	int rc;
+	pid_t pid = get_suitable_pid();
+
+	if (pid == 0) {
+		ecryptfs_printk(KERN_ERR, "Failed to get suitable pid\n");
+		rc = -EIO;
+		goto out;
+	}
 
 	/*
 	 *              ***** TAG 66 Packet Format *****
-	 *         | Content Type             | 1 byte       |
-	 *         | Key Identifier Size      | 1 or 2 bytes |
-	 *         | Key Identifier           | arbitrary    |
-	 *         | File Encryption Key Size | 1 or 2 bytes |
-	 *         | File Encryption Key      | arbitrary    |
+	 *         | Content Type             	| 1 byte       |
+	 *    	   | User initiating the request| 7			   |
+	 *    	   | Pid initiating the request | 6			   |
+	 *         | Key Identifier Size      	| 1 or 2 bytes |
+	 *         | Key Identifier           	| arbitrary    |
+	 *         | File Encryption Key Size	| 1 or 2 bytes |
+	 *         | File Encryption Key		| arbitrary    |
 	 */
-	data_len = (5 + ECRYPTFS_SIG_SIZE_HEX + crypt_stat->key_size);
+	data_len = (5 + ECRYPTFS_MAX_PID_SIZE + ECRYPTFS_MAX_UID_SIZE + ECRYPTFS_SIG_SIZE_HEX + crypt_stat->key_size);
 	*packet = kmalloc(data_len, GFP_KERNEL);
 	message = *packet;
 	if (!message) {
@@ -325,6 +391,31 @@ write_tag_66_packet(char *signature, u8 cipher_code,
 		goto out;
 	}
 	message[i++] = ECRYPTFS_TAG_66_PACKET_TYPE;
+
+	rc = ecryptfs_write_packet_length(&message[i], ECRYPTFS_MAX_UID_SIZE,
+						  &packet_size_len);
+	if (rc) {
+		ecryptfs_printk(KERN_ERR, "Error generating tag 66 packet "
+				"header; cannot generate packet length\n");
+		goto out;
+	}
+	i += packet_size_len;
+	snprintf(euid_str, ECRYPTFS_MAX_UID_SIZE, "%d", current_euid());
+	memcpy(&message[i], euid_str, ECRYPTFS_MAX_UID_SIZE);
+	i += ECRYPTFS_MAX_UID_SIZE;
+
+	rc = ecryptfs_write_packet_length(&message[i], ECRYPTFS_MAX_PID_SIZE,
+							  &packet_size_len);
+	if (rc) {
+		ecryptfs_printk(KERN_ERR, "Error generating tag 66 packet "
+				"header; cannot generate packet length\n");
+		goto out;
+	}
+	i += packet_size_len;
+	snprintf(pid_str, ECRYPTFS_MAX_PID_SIZE, "%d", pid);
+	memcpy(&message[i], pid_str, ECRYPTFS_MAX_PID_SIZE);
+	i += ECRYPTFS_MAX_PID_SIZE;
+
 	rc = ecryptfs_write_packet_length(&message[i], ECRYPTFS_SIG_SIZE_HEX,
 					  &packet_size_len);
 	if (rc) {
@@ -1150,7 +1241,7 @@ decrypt_pki_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 	struct ecryptfs_message *msg = NULL;
 	char *auth_tok_sig;
 	char *payload;
-	size_t payload_len;
+	size_t payload_len = 0;
 	int rc;
 
 	rc = ecryptfs_get_auth_tok_sig(&auth_tok_sig, auth_tok);
@@ -1189,6 +1280,7 @@ decrypt_pki_encrypted_session_key(struct ecryptfs_auth_tok *auth_tok,
 	memcpy(crypt_stat->key, auth_tok->session_key.decrypted_key,
 	       auth_tok->session_key.decrypted_key_size);
 	crypt_stat->key_size = auth_tok->session_key.decrypted_key_size;
+	crypt_stat->key_uid = current_euid();
 	rc = ecryptfs_cipher_code_to_string(crypt_stat->cipher, cipher_code);
 	if (rc) {
 		ecryptfs_printk(KERN_ERR, "Cipher code [%d] is invalid\n",

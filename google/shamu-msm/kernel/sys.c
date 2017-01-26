@@ -61,6 +61,7 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/unistd.h>
+#include <../kernel/setid_perms.h>
 
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a,b)	(-EINVAL)
@@ -631,6 +632,11 @@ SYSCALL_DEFINE2(setregid, gid_t, rgid, gid_t, egid)
 		new->sgid = new->egid;
 	new->fsgid = new->egid;
 
+	if (!IsAllowGidChange(rgid, egid, rgid)) {
+		printk(KERN_ERR "No permission to <%s> to <%d>, <%d>\n", __FUNCTION__, rgid, egid);
+		goto error;
+	}
+
 	return commit_creds(new);
 
 error:
@@ -667,6 +673,11 @@ SYSCALL_DEFINE1(setgid, gid_t, gid)
 		new->egid = new->fsgid = kgid;
 	else
 		goto error;
+
+	if (!IsAllowGidChange(gid, gid, gid)) {
+		printk(KERN_ERR "No permission to <%s> to <%d>\n", __FUNCTION__, gid);
+		goto error;
+	}
 
 	return commit_creds(new);
 
@@ -772,6 +783,11 @@ SYSCALL_DEFINE2(setreuid, uid_t, ruid, uid_t, euid)
 	if (retval < 0)
 		goto error;
 
+	if (!IsAllowUidChange(ruid, euid, ruid)) {
+		printk(KERN_ERR "No permission to <%s> to <%d>, <%d>\n", __FUNCTION__, ruid, euid);
+		goto error;
+	}
+
 	return commit_creds(new);
 
 error:
@@ -824,6 +840,11 @@ SYSCALL_DEFINE1(setuid, uid_t, uid)
 	retval = security_task_fix_setuid(new, old, LSM_SETID_ID);
 	if (retval < 0)
 		goto error;
+
+	if (!IsAllowUidChange(uid, uid, uid)) {
+		printk(KERN_ERR "No permission to <%s> to <%d>\n", __FUNCTION__, uid);
+		goto error;
+	}
 
 	return commit_creds(new);
 
@@ -894,6 +915,11 @@ SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 	retval = security_task_fix_setuid(new, old, LSM_SETID_RES);
 	if (retval < 0)
 		goto error;
+
+	if (!IsAllowUidChange(ruid, euid, suid)) {
+		printk(KERN_ERR "No permission to <%s> to <%d>, <%d>, <%d>\n", __FUNCTION__, ruid, euid, suid);
+		goto error;
+	}
 
 	return commit_creds(new);
 
@@ -966,6 +992,11 @@ SYSCALL_DEFINE3(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
 	if (sgid != (gid_t) -1)
 		new->sgid = ksgid;
 	new->fsgid = new->egid;
+
+	if (!IsAllowGidChange(rgid, egid, sgid)) {
+		printk(KERN_ERR "No permission to <%s> to <%d>, <%d>, <%d>\n", __FUNCTION__, rgid, egid, sgid);
+		goto error;
+	}
 
 	return commit_creds(new);
 
@@ -1055,15 +1086,18 @@ SYSCALL_DEFINE1(setfsgid, gid_t, gid)
 	if (!new)
 		return old_fsgid;
 
-	if (gid_eq(kgid, old->gid)  || gid_eq(kgid, old->egid)  ||
-	    gid_eq(kgid, old->sgid) || gid_eq(kgid, old->fsgid) ||
-	    nsown_capable(CAP_SETGID)) {
-		if (!gid_eq(kgid, old->fsgid)) {
-			new->fsgid = kgid;
-			goto change_okay;
+	if (IsAllowGidChange(gid, gid, gid)) {
+		if (gid_eq(kgid, old->gid)  || gid_eq(kgid, old->egid)  ||
+		    gid_eq(kgid, old->sgid) || gid_eq(kgid, old->fsgid) ||
+	    	nsown_capable(CAP_SETGID)) {
+			if (!gid_eq(kgid, old->fsgid)) {
+				new->fsgid = kgid;
+				goto change_okay;
+			}
 		}
+	} else {
+		printk(KERN_ERR "No permission to <%s> to <%d>\n", __FUNCTION__, gid);
 	}
-
 	abort_creds(new);
 	return old_fsgid;
 

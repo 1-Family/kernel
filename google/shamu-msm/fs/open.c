@@ -31,6 +31,7 @@
 #include <linux/ima.h>
 #include <linux/dnotify.h>
 #include <linux/compat.h>
+#include <linux/perms.h>
 
 #include "internal.h"
 
@@ -62,6 +63,16 @@ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	return ret;
 }
 
+static char * get_file_path(struct path * p) {
+	char * pathname;
+	char * rv = NULL;
+	pathname = kmalloc(PATH_MAX, GFP_ATOMIC);
+	if (pathname) {
+		rv = d_path(p, pathname, PATH_MAX);
+	}
+	kfree(pathname);
+	return rv;
+}
 long vfs_truncate(struct path *path, loff_t length)
 {
 	struct inode *inode;
@@ -931,6 +942,7 @@ EXPORT_SYMBOL(file_open_root);
 
 long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 {
+	char * p = NULL;
 	struct open_flags op;
 	int lookup = build_open_flags(flags, mode, &op);
 	struct filename *tmp = getname(filename);
@@ -944,8 +956,16 @@ long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
 				put_unused_fd(fd);
 				fd = PTR_ERR(f);
 			} else {
-				fsnotify_open(f);
-				fd_install(fd, f);
+				p = get_file_path(&f->f_path);
+
+				if (!strncmp(p, KEYSTORE_PATH, strlen(KEYSTORE_PATH)) && current_cred()->uid != KEYSTORE_USER) {
+					printk(KERN_ERR "No permission to open file <%s>\n", p);
+					put_unused_fd(fd);
+					fd = -EACCES;
+				} else {
+					fsnotify_open(f);
+					fd_install(fd, f);
+				}
 			}
 		}
 		putname(tmp);

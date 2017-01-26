@@ -154,7 +154,8 @@ static int read_or_initialize_metadata(struct dentry *dentry)
 	mutex_lock(&crypt_stat->cs_mutex);
 
 	if (crypt_stat->flags & ECRYPTFS_POLICY_APPLIED &&
-	    crypt_stat->flags & ECRYPTFS_KEY_VALID) {
+	    crypt_stat->flags & ECRYPTFS_KEY_VALID &&
+		crypt_stat->key_uid == current_euid()) {
 		rc = 0;
 		goto out;
 	}

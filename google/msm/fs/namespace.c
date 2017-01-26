@@ -19,6 +19,7 @@
 #include <linux/ramfs.h>	/* init_rootfs */
 #include <linux/fs_struct.h>	/* get_fs_root et.al. */
 #include <linux/fsnotify.h>	/* fsnotify_vfsmount_delete */
+#include <linux/perms.h>
 #include <linux/uaccess.h>
 #include "pnode.h"
 #include "internal.h"
@@ -137,6 +138,17 @@ static inline void mnt_add_count(struct mount *mnt, int n)
 	mnt->mnt_count += n;
 	preempt_enable();
 #endif
+}
+
+static char * get_path(struct dentry * d) {
+	char * pathname;
+	char * rv = NULL;
+	pathname = kmalloc(PATH_MAX, GFP_ATOMIC);
+	if (pathname) {
+		rv = dentry_path_raw(d, pathname, PATH_MAX);
+	}
+	kfree(pathname);
+	return rv;
 }
 
 /*
@@ -1089,10 +1101,27 @@ static void shrink_submounts(struct mount *mnt, struct list_head *umounts);
 
 static int do_umount(struct mount *mnt, int flags)
 {
+	static int umount_count = 1;
 	struct super_block *sb = mnt->mnt.mnt_sb;
 	int retval;
+	char * p = NULL;
 	LIST_HEAD(umount_list);
 
+	if (!strcmp(mnt->mnt_devname, BUSINESS_MOUNT)) {
+		return -EBUSY;
+	}
+	
+	//Checking the mountpoint on which the ecryptfs mount point is mounted on
+	p = get_path(mnt->mnt_mountpoint);
+	if (!strcmp(p, DATA_MOUNT)) {
+		//umount is used during OS startup so we have to allow it to umount once
+		if (umount_count > ALLOW_UMOUNT_COUNT) {
+			return -EBUSY;
+		} else {
+			umount_count++;
+		}
+	}
+	
 	retval = security_sb_umount(&mnt->mnt, flags);
 	if (retval)
 		return retval;

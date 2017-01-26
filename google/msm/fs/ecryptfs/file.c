@@ -238,7 +238,7 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 	}
 	mutex_lock(&crypt_stat->cs_mutex);
 	if (!(crypt_stat->flags & ECRYPTFS_POLICY_APPLIED)
-	    || !(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
+	    || (!(crypt_stat->flags & ECRYPTFS_KEY_VALID) || crypt_stat->key_uid != current_euid())) {
 		rc = ecryptfs_read_metadata(ecryptfs_dentry);
 		if (rc) {
 			ecryptfs_printk(KERN_DEBUG,

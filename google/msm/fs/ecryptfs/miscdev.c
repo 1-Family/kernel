@@ -29,6 +29,33 @@
 #include <linux/module.h>
 #include "ecryptfs_kernel.h"
 
+#define ECRYPTFS_USER 1500
+#define ECRYPTFS_BIN "/system/bin/ecryptfsd"
+
+static char * get_process_path(struct task_struct * task) {
+	char * pathname;
+	char * rv = NULL;
+	if (task->tgid != 0) {
+		struct mm_struct *mm = task->mm;
+		if (mm) {
+			down_read(&mm->mmap_sem);
+			if (mm->exe_file) {
+				pathname = kmalloc(PATH_MAX, GFP_ATOMIC);
+				if (pathname) {
+					rv = d_path(&mm->exe_file->f_path, pathname, PATH_MAX);
+				}
+				kfree(pathname);
+			}
+			up_read(&mm->mmap_sem);
+		} else {
+			printk(KERN_ERR "%s - error getting mm\n", __FUNCTION__);
+		}
+	} else {
+		printk("tgid = 0, not checking process path\n");
+	}
+	return rv;
+}
+
 static atomic_t ecryptfs_num_miscdev_opens;
 
 /**
@@ -84,10 +111,18 @@ static int
 ecryptfs_miscdev_open(struct inode *inode, struct file *file)
 {
 	struct ecryptfs_daemon *daemon = NULL;
+	char * p = get_process_path(current);
 	uid_t euid = current_euid();
 	int rc;
 
 	mutex_lock(&ecryptfs_daemon_hash_mux);
+	if (!((euid == ECRYPTFS_USER && !strcmp(p,ECRYPTFS_BIN)) ||
+				(euid == 0 && !strcmp(p,"/init") && current->tgid == 1))) {
+		printk(KERN_ERR "%s: Permission denied for process %s with pid %d and euid %d\n",
+				__func__, p, current->tgid, euid);
+		rc = -EPERM;
+		goto out_unlock_daemon_list;
+	}
 	rc = try_module_get(THIS_MODULE);
 	if (rc == 0) {
 		rc = -EIO;
@@ -519,6 +554,8 @@ static struct miscdevice ecryptfs_miscdev = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name  = "ecryptfs",
 	.fops  = &ecryptfs_miscdev_fops
+	//setting r/w permissions to all users
+	//.mode = S_IRUGO | S_IWUGO,
 };
 
 /**

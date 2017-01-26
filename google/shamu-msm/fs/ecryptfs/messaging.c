@@ -36,6 +36,7 @@ static int ecryptfs_hash_bits;
 	hash_long((unsigned long)from_kuid(&init_user_ns, current_euid()), ecryptfs_hash_bits)
 
 static u32 ecryptfs_msg_counter;
+static struct ecryptfs_daemon * master_daemon = NULL;
 static struct ecryptfs_msg_ctx *ecryptfs_msg_ctx_arr;
 
 /**
@@ -114,9 +115,13 @@ void ecryptfs_msg_ctx_alloc_to_free(struct ecryptfs_msg_ctx *msg_ctx)
  */
 int ecryptfs_find_daemon_by_euid(struct ecryptfs_daemon **daemon)
 {
-	int rc;
-
-	hlist_for_each_entry(*daemon,
+	int rc = 0;
+	*daemon = master_daemon;
+	if (*daemon == NULL) {
+		rc = -EINVAL;
+	}
+	goto out;
+	/*hlist_for_each_entry(*daemon,
 			    &ecryptfs_daemon_hash[ecryptfs_current_euid_hash()],
 			    euid_chain) {
 		if (uid_eq((*daemon)->file->f_cred->euid, current_euid())) {
@@ -124,7 +129,7 @@ int ecryptfs_find_daemon_by_euid(struct ecryptfs_daemon **daemon)
 			goto out;
 		}
 	}
-	rc = -EINVAL;
+	rc = -EINVAL;*/
 out:
 	return rc;
 }
@@ -143,7 +148,12 @@ int
 ecryptfs_spawn_daemon(struct ecryptfs_daemon **daemon, struct file *file)
 {
 	int rc = 0;
-
+	//Allow only one execution
+	if(master_daemon != NULL) {
+		rc = -EACCES;
+		printk(KERN_ERR "Daemon is already running\n");
+		goto out;
+	}
 	(*daemon) = kzalloc(sizeof(**daemon), GFP_KERNEL);
 	if (!(*daemon)) {
 		rc = -ENOMEM;
@@ -151,6 +161,7 @@ ecryptfs_spawn_daemon(struct ecryptfs_daemon **daemon, struct file *file)
 		       "GFP_KERNEL memory\n", __func__, sizeof(**daemon));
 		goto out;
 	}
+	master_daemon = *daemon;
 	(*daemon)->file = file;
 	mutex_init(&(*daemon)->mux);
 	INIT_LIST_HEAD(&(*daemon)->msg_ctx_out_queue);
@@ -191,6 +202,7 @@ int ecryptfs_exorcise_daemon(struct ecryptfs_daemon *daemon)
 	hlist_del(&daemon->euid_chain);
 	mutex_unlock(&daemon->mux);
 	kzfree(daemon);
+	master_daemon = NULL;
 out:
 	return rc;
 }

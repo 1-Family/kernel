@@ -47,6 +47,8 @@
 #define ECRYPTFS_MAX_MSG_CTX_TTL (HZ*3)
 #define ECRYPTFS_DEFAULT_NUM_USERS 4
 #define ECRYPTFS_MAX_NUM_USERS 32768
+#define ECRYPTFS_MAX_UID_SIZE 7
+#define ECRYPTFS_MAX_PID_SIZE 6
 #define ECRYPTFS_XATTR_NAME "user.ecryptfs"
 
 void ecryptfs_dump_auth_tok(struct ecryptfs_auth_tok *auth_tok);
@@ -225,6 +227,7 @@ struct ecryptfs_crypt_stat {
 				       * the initialization vectors */
 	unsigned char cipher[ECRYPTFS_MAX_CIPHER_NAME_SIZE];
 	unsigned char key[ECRYPTFS_MAX_KEY_BYTES];
+	uid_t key_uid;
 	unsigned char root_iv[ECRYPTFS_MAX_IV_BYTES];
 	struct list_head keysig_list;
 	struct mutex keysig_list_mutex;
