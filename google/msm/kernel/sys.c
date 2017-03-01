@@ -2,6 +2,7 @@
  *  linux/kernel/sys.c
  *
  *  Copyright (C) 1991, 1992  Linus Torvalds
+ *  Modifications Copyright (C) 2011-2017 TheCTO Technological Entrepreneurship & Consulting LTD
  */
 
 #include <linux/export.h>
