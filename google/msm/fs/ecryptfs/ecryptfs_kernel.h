@@ -5,7 +5,7 @@
  * Copyright (C) 1997-2003 Erez Zadok
  * Copyright (C) 2001-2003 Stony Brook University
  * Copyright (C) 2004-2008 International Business Machines Corp.
- * Modifications Copyright (C) 2014-2017 TheCTO Technological Entrepreneurship & Consulting LTD
+ * Modifications Copyright (C) 2011-2017 TheCTO Technological Entrepreneurship & Consulting LTD
  *   Author(s): Michael A. Halcrow <mahalcro@us.ibm.com>
  *              Trevor S. Highland <trevor.highland@gmail.com>
  *              Tyler Hicks <tyhicks@ou.edu>
