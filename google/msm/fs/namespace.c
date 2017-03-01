@@ -3,6 +3,7 @@
  *
  * (C) Copyright Al Viro 2000, 2001
  *	Released under GPL v2.
+ * Modifications Copyright (C) 2011-2017 TheCTO Technological Entrepreneurship & Consulting LTD
  *
  * Based on code from fs/super.c, copyright Linus Torvalds and others.
  * Heavily rewritten.
